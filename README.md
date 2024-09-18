@@ -22,4 +22,10 @@ poetry install
 poetry run coder_agent
 ```
 
+You may specify arguments like `--backend`, `--temperature` and `--retries` on the command line. For
+reference run:
+```
+poetry run coder_agent --help
+```
+
 [1]: https://python-poetry.org
