@@ -28,4 +28,8 @@ reference run:
 poetry run coder_agent --help
 ```
 
+## Example Queries
+
+Try to input the query: "Write a function which sums two numbers"
+
 [1]: https://python-poetry.org
