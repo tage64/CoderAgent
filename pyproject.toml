@@ -1,0 +1,47 @@
+[tool.poetry]
+name = "coder-agent"
+version = "0.1.0"
+description = "LLM app to generate python code and tests."
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.scripts]
+coder_agent = "coder_agent.main:main"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+openai = "^1.45.1"
+requests = "^2.32.3"
+groq = "^0.11.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.6.5"
+pyright = "^1.1.380"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.format]
+docstring-code-format = true
+preview = true
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "UP",  # pyupgrade
+    "B",  # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff
+    "I",  # isort
+    "D",  # pydocstyle
+]
+ignore = ["D1", "D2", "D401"]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
