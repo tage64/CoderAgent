@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
-import json
+import argparse
 import os
 import subprocess
 import tempfile
 import textwrap
 
-import requests
-
-from .backend import *
+from .backend import Backend, GroqBackend, OpenaiBackend
 
 
 def clean_code(code: str) -> str:
@@ -23,7 +21,8 @@ def clean_code(code: str) -> str:
 def programmer_agent(backend: Backend, user_query: str) -> str:
     system_message = {
         "role": "system",
-        "content": "You are a programmer. Write Python code to solve the user's problem. Provide only the code, do not include explanations.",
+        "content": "You are a programmer. Write Python code to solve the user's problem. "
+        "Provide only the code, do not include explanations.",
     }
     user_message = {
         "role": "user",
@@ -136,10 +135,7 @@ def code_executor(code: str, test_code: str) -> tuple[bool, str, str]:
             return False, output, errors
 
 
-def main() -> None:
-    n_retries: int = 4
-    backend = GroqBackend()
-
+def run(backend: Backend, n_retries: int) -> None:
     user_query: str = input("Enter your query: ")
 
     # Programmer writes code
@@ -166,7 +162,7 @@ def main() -> None:
             print(output)
             print("Test Errors:")
             print(errors)
-            print("\n","-"*60)
+            print("\n", "-" * 60)
 
             # Test agent evaluates the code
             code = test_agent(backend, code, output, errors)
@@ -175,6 +171,41 @@ def main() -> None:
     else:
         print(f"Failed after {n_retries} retries.")
 
+
+def main() -> None:
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument(
+        "-b", "--backend", choices=["groq", "openai"], default="groq", help="Which backend to use."
+    )
+    argparser.add_argument(
+        "-n",
+        "--retries",
+        type=int,
+        default=4,
+        help="Maximum number of iterations in the test-rewrite loop.",
+    )
+    argparser.add_argument(
+        "-t",
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="The temperature for the model.  Should be in the range [0, 1].",
+    )
+    argparser.add_argument("-m", "--model", help="Name of the specific model for the backend.")
+    argparser.add_argument("--max-tokens", type=int, default=1500, help="Maximum number of tokens.")
+    args = argparser.parse_args()
+    match args.backend:
+        case "groq":
+            backend = GroqBackend()
+        case "openai":
+            backend = OpenaiBackend()
+        case x:
+            exit(f"Bad backend: {x}")
+    backend.max_tokens = args.max_tokens
+    backend.temperature = args.temperature
+    if args.model is not None:
+        backend.model = args.model
+    run(backend, args.retries)
 
 
 if __name__ == "__main__":

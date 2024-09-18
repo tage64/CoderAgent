@@ -10,13 +10,13 @@ coder_agent = "coder_agent.main:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-openai = "^1.45.1"
-requests = "^2.32.3"
+openai = "^1.46.0"
 groq = "^0.11.0"
+python-dotenv = "^1.0.1"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.5"
-pyright = "^1.1.380"
+pyright = "^1.1.381"
 
 [build-system]
 requires = ["poetry-core"]
@@ -24,6 +24,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 100
+exclude = ["*.ipynb"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -39,7 +40,6 @@ select = [
     "SIM",  # flake8-simplify
     "RUF",  # ruff
     "I",  # isort
-    "D",  # pydocstyle
 ]
 ignore = ["D1", "D2", "D401"]
 
