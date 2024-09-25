@@ -13,6 +13,7 @@ python = "^3.10"
 openai = "^1.46.0"
 groq = "^0.11.0"
 python-dotenv = "^1.0.1"
+mypy = "^1.11.2"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.5"
@@ -21,6 +22,9 @@ pyright = "^1.1.381"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pyright]
+ignore = ["target/"]
 
 [tool.ruff]
 line-length = 100
