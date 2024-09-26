@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
+from __future__ import annotations
 import argparse
+import re
 import shutil
 import subprocess
 import textwrap
@@ -8,13 +10,16 @@ from pathlib import Path
 
 from .backend import Backend, GroqBackend, OpenaiBackend
 
+CODE_BLOCK_REGEX = re.compile(r"^```(python)?\s*$((.*\n)*)^```\s*$", flags=re.I | re.M)
+
 
 def clean_code(code: str) -> str:
     """Clean the code by removing unwanted markdown markers or other invalid syntax.
     This will ensure the code is valid Python code.
     """
-    # Remove Markdown code block markers if present
-    return textwrap.dedent(code.replace("```", "")).strip()
+    if (code_block_match := CODE_BLOCK_REGEX.search(code)) is not None:
+        return code_block_match.group(2)
+    return code
 
 
 def programmer_agent(backend: Backend, user_query: str) -> str:
@@ -118,6 +123,9 @@ def test_designer_agent(backend: Backend, code_file: Path, user_query: str) -> s
         "verify the correctness of code solving the user's problem. Use the unit "
         "test framework in Python. Provide only the test code, do not include "
         "explanations. Write type annotations for the test code. "
+        "Use math.isnan() to check if a number is NaN. "
+        "Do not use any external libraries. "
+        "Do not try with very large inputs. "
         "Do not replicate the function definitions.",
     }
     user_message = {
@@ -138,8 +146,13 @@ def test_designer_agent(backend: Backend, code_file: Path, user_query: str) -> s
 
 
 def run_tests_and_correct(
-    backend: Backend, code_file: Path, test_code: str, user_query: str, max_retries: int
-) -> str | None:
+    backend: Backend,
+    code_file: Path,
+    test_code: str,
+    user_query: str,
+    max_retries: int,
+    interactive: bool,
+) -> None:
     """Given the code and the tests, merge them into the same python file and run
     the unit tests in it. If the tests succeed, then return with the final code and tests,
     else asks the LLM to rewrite the code to conform to the tests.
@@ -147,15 +160,20 @@ def run_tests_and_correct(
     Returns the final code and tests if successful, if failed after max_retries returns None.
     """
     orig_code_file = code_file
+    print("Type checking code...")
     if (c := type_check_and_correct(backend, code_file, user_query, max_retries)) is not None:
         code_file = c
     else:
         return
     with open(code_file) as f:
         code: str = f.read()
+    if interactive:
+        print("The code is:\n")
+        print(code)
+        input("Press enter to continue ")
     test_code_separator: str = "## Tests"
     tries: int = 0
-    while tries <= max_retries:
+    while True:
         # Check that the code and the tests passes type checking.
         code_with_tests: str = code + "\n\n" + test_code_separator + "\n\n" + test_code
         code_with_tests_file = code_file.with_stem(
@@ -163,6 +181,7 @@ def run_tests_and_correct(
         )
         with open(code_with_tests_file, "w") as f:
             f.write(code_with_tests)
+        print("Type checking code and tests...")
         if (
             c := type_check_and_correct(backend, code_with_tests_file, user_query, max_retries)
         ) is not None:
@@ -196,10 +215,19 @@ def run_tests_and_correct(
             tries += 1
             # Write test errors to a file.
             with open(
-                code_with_tests_file.with_name(code_with_tests_file.stem + "_errors"), "w"
+                code_with_tests_file.with_name(code_with_tests_file.stem + "_errors.txt"), "w"
             ) as f:
                 f.write(e.stdout)
+            print("The tests failed:")
+            print(textwrap.indent(e.stdout, " " * 4))
+            if tries > max_retries:
+                print(f"Failed testing after {tries} tries.")
+                break
+            if interactive:
+                print("We will ask the agent to update the code.")
+                input("Press enter to continue. ")
             # Ask programmer agent to update the code.
+            print("Updating the code...")
             code = programmer_agent(
                 backend,
                 textwrap.dedent(f"""\
@@ -217,14 +245,20 @@ def run_tests_and_correct(
                         Please correct the code to make it pass the tests.
                     """),
             )
+            if interactive:
+                print("The code has been updated to:\n")
+                print(code)
+                input("Press enter to continue ")
+            print("\n", "-" * 10, f" Retry {tries} ", "-" * 50)
         else:
             # Tests succeeded!
             print(f"The tests passed after {tries} retries.")
-            return code_with_tests
-    print(f"Failed testing after {tries} tries.")
+            print("The final code is:\n")
+            print(code)
+            break
 
 
-def run(backend: Backend, max_retries: int) -> None:
+def run(backend: Backend, max_retries: int, interactive: bool) -> None:
     user_query: str = input("Enter your query: ")
 
     # Programmer writes code
@@ -245,8 +279,7 @@ def run(backend: Backend, max_retries: int) -> None:
     with open(code_file, "w") as f:
         f.write(code)
     test_code: str = test_designer_agent(backend, code_file, user_query)
-    code_with_tests = run_tests_and_correct(backend, code_file, test_code, user_query, max_retries)
-    print(code_with_tests)
+    run_tests_and_correct(backend, code_file, test_code, user_query, max_retries, interactive)
 
 
 def main() -> None:
@@ -262,6 +295,9 @@ def main() -> None:
         help="Maximum number of iterations in the test-rewrite loop.",
     )
     argparser.add_argument(
+        "--no-interactive", "--ni", action="store_true", help="Pause before each test run."
+    )
+    argparser.add_argument(
         "-t",
         "--temperature",
         type=float,
@@ -271,18 +307,17 @@ def main() -> None:
     argparser.add_argument("-m", "--model", help="Name of the specific model for the backend.")
     argparser.add_argument("--max-tokens", type=int, default=1500, help="Maximum number of tokens.")
     args = argparser.parse_args()
-    match args.backend:
-        case "groq":
-            backend = GroqBackend()
-        case "openai":
-            backend = OpenaiBackend()
-        case x:
-            exit(f"Bad backend: {x}")
+    if args.backend == "groq":
+        backend = GroqBackend()
+    elif args.backend == "openai":
+        backend = OpenaiBackend()
+    else:
+        exit(f"Bad backend: {args.backend}")
     backend.max_tokens = args.max_tokens
     backend.temperature = args.temperature
     if args.model is not None:
         backend.model = args.model
-    run(backend, args.retries)
+    run(backend, args.retries, interactive=not args.no_interactive)
 
 
 if __name__ == "__main__":
