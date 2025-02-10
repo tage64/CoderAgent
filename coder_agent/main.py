@@ -315,6 +315,9 @@ def main() -> None:
         action="store_true",
         help="Run a human-eval benchmark. May take a lot of resources.",
     )
+    argparser.add_argument(
+        "--human-eval-samples", type=int, help="Solve at most this number of problems."
+    )
     args = argparser.parse_args()
     if args.backend == "groq":
         backend = GroqBackend()
@@ -329,19 +332,23 @@ def main() -> None:
     if args.human_eval:
         problems = human_eval.data.read_problems()
         print(f"Found {len(problems)} problems.")
-        samples = [
-            dict(
-                task_id=task_id,
-                completion=run(
-                    problems[task_id]["prompt"], backend, args.retries, interactive=False
-                ),
+        samples = []
+        for i, task_id in enumerate(problems):
+            if args.human_eval_samples is not None and args.human_eval_samples <= i:
+                break
+            samples.append(
+                dict(
+                    task_id=task_id,
+                    completion=run(
+                        problems[task_id]["prompt"], backend, args.retries, interactive=False
+                    ),
+                )
             )
-            for task_id in problems
-        ]
-        write_jsonl("samples.jsonl", samples)
+        human_eval.data.write_jsonl("samples.jsonl", samples)
     else:
         user_query: str = input("Enter your query: ")
         run(user_query, backend, args.retries, interactive=not args.no_interactive)
+
 
 if __name__ == "__main__":
     main()
