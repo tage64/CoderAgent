@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 
 from __future__ import annotations
+
 import argparse
 import re
 import shutil
 import subprocess
 import textwrap
 from pathlib import Path
+
+import human_eval.data
 
 from .backend import Backend, GroqBackend, OpenaiBackend
 
@@ -152,7 +155,7 @@ def run_tests_and_correct(
     user_query: str,
     max_retries: int,
     interactive: bool,
-) -> None:
+) -> str | None:
     """Given the code and the tests, merge them into the same python file and run
     the unit tests in it. If the tests succeed, then return with the final code and tests,
     else asks the LLM to rewrite the code to conform to the tests.
@@ -255,12 +258,10 @@ def run_tests_and_correct(
             print(f"The tests passed after {tries} retries.")
             print("The final code is:\n")
             print(code)
-            break
+            return code
 
 
-def run(backend: Backend, max_retries: int, interactive: bool) -> None:
-    user_query: str = input("Enter your query: ")
-
+def run(user_query: str, backend: Backend, max_retries: int, interactive: bool) -> str:
     # Programmer writes code
     code: str = programmer_agent(
         backend,
@@ -279,7 +280,10 @@ def run(backend: Backend, max_retries: int, interactive: bool) -> None:
     with open(code_file, "w") as f:
         f.write(code)
     test_code: str = test_designer_agent(backend, code_file, user_query)
-    run_tests_and_correct(backend, code_file, test_code, user_query, max_retries, interactive)
+    return (
+        run_tests_and_correct(backend, code_file, test_code, user_query, max_retries, interactive)
+        or ""
+    )
 
 
 def main() -> None:
@@ -306,6 +310,11 @@ def main() -> None:
     )
     argparser.add_argument("-m", "--model", help="Name of the specific model for the backend.")
     argparser.add_argument("--max-tokens", type=int, default=1500, help="Maximum number of tokens.")
+    argparser.add_argument(
+        "--human-eval",
+        action="store_true",
+        help="Run a human-eval benchmark. May take a lot of resources.",
+    )
     args = argparser.parse_args()
     if args.backend == "groq":
         backend = GroqBackend()
@@ -317,8 +326,21 @@ def main() -> None:
     backend.temperature = args.temperature
     if args.model is not None:
         backend.model = args.model
-    run(backend, args.retries, interactive=not args.no_interactive)
-
+    if args.human_eval:
+        problems = human_eval.data.read_problems()
+        print(f"Found {len(problems)} problems.")
+        samples = [
+            dict(
+                task_id=task_id,
+                completion=run(
+                    problems[task_id]["prompt"], backend, args.retries, interactive=False
+                ),
+            )
+            for task_id in problems
+        ]
+    else:
+        user_query: str = input("Enter your query: ")
+        run(user_query, backend, args.retries, interactive=not args.no_interactive)
 
 if __name__ == "__main__":
     main()
