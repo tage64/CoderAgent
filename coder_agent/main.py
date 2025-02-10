@@ -338,6 +338,7 @@ def main() -> None:
             )
             for task_id in problems
         ]
+        write_jsonl("samples.jsonl", samples)
     else:
         user_query: str = input("Enter your query: ")
         run(user_query, backend, args.retries, interactive=not args.no_interactive)
